@@ -47,7 +47,7 @@ int main(int iArgC, char *sArgV[]) {
 	// Set the server info
 	oServer = gethostbyname(sArgV[1]);
 	// Check for server data
-	if (oSercer == NULL) {
+	if (oServer == NULL) {
 		// Throw new error
 		fprintf(stderr, "ERROR:  Unable to find host.");
 		// Terminate
