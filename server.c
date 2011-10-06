@@ -75,7 +75,7 @@ int main(int iArgC, char *sArgV[]) {
 	// Set the new buffer
 	bzero(sBuffer, 4096);
 	// Read the content
-	iContentLength = read(iNewSocketFileDescriptor, sBuffer, strlen(sBuffer));
+	iContentLength = read(iNewSocketFileDescriptor, sBuffer, 4096);
 	// Make sure we have data
 	if (iContentLength < 0) {
 		// Throw new error
