@@ -7,13 +7,23 @@
 // Definitions
 #define TRUE  1
 #define FALSE 0
+// MongoDB Server Data
 #define MONGO_LOG_SERVER_HOST "127.0.0.1"
 #define MONGO_LOG_SERVER_PASS ""
 #define MONGO_LOG_SERVER_PORT 27017
 #define MONGO_LOG_SERVER_USER ""
+// MySQL Server Data
+#define MYSQL_LOG_SERVER_HOST "127.0.0.1"
+#define MYSQL_LOG_SERVER_PASS ""
+#define MYSQL_LOG_SERVER_PORT 3306
+#define MYSQL_LOG_SERVER_USER ""
+// File Paths
+#define JODEN_CONFIG_FILE "/Users/tbrown/Documents/Applications/JodenWeb/conf.d/joden.conf"
+#define JODEN_LOG_FILE    "/Users/tbrown/Documents/Applications/JodenWeb/logs/server.log"
 /**
  * This method handles all of the contact
  * between the server and the client
+ * @param int iSocketFileDescriptor
  * @return void
 **/
 void clientOperations(int iSocketFileDescriptor) {
@@ -31,7 +41,7 @@ void clientOperations(int iSocketFileDescriptor) {
 		throwError("ERROR:  Unable to reading from socket.");
 	}
 	// Write to logs
-	logMessage("/Users/tbrown/Documents/Applications/JodenWeb/logs/server.log", &sBuffer);
+	logMessage(JODEN_LOG_FILE, &sBuffer);
 	// Write to the socket
 	iContentLength = write(iSocketFileDescriptor, "I got your message", 18);
 	// Check for write success
@@ -40,6 +50,26 @@ void clientOperations(int iSocketFileDescriptor) {
 		throwError("ERROR:  Unable to write to socket.");
 	}
 }
+char getConfig() {
+	// Declare the array variable
+	const char *aConfig[][2];
+	// Declare the buffer
+	char sBufferLine[256];
+	// Declare the line number
+	int iLineNumber = 0;
+	// Read the lines
+	while (fgets(sBufferLine, 256, JODEN_CONFIG_FILE) != NULL) {
+		
+	}
+	// Return the config
+	return aConfig;
+}
+/**
+ * This method logs messages to a 
+ * database to be read by other apps
+ * @param char sMessage
+ * @return void
+ **/
 void logMessageToDatabase(char *sMessage) {
 	// Declare the MongoDB connection
 	mongo oConnection[1];
@@ -99,6 +129,9 @@ void logMessageToDatabase(char *sMessage) {
 /**
  * This method handles the action of opening, 
  * writing and closing of log files
+ * @param char sFile
+ * @param char sMessage
+ * @return void
  **/
 void logMessageToFile(char *sFile, char *sMessage) {
 	// Declare the file handle
@@ -115,6 +148,9 @@ void logMessageToFile(char *sFile, char *sMessage) {
 /**
  * This method is our main constructor
  * it sets up and closes the connection
+ * @param int iArgC
+ * @param char sArgV
+ * @return int
  **/
 int main(int iArgC, char *sArgV[]) {
 	// Declare the socket file descriptor
@@ -203,6 +239,7 @@ int main(int iArgC, char *sArgV[]) {
 /**
  * This is our error handler, it throws
  * errors to the client and terminated JodenWeb
+ * @param char sMessage
  * @return void
 **/
 void throwError(char *sMessage) {
