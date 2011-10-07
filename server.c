@@ -1,7 +1,16 @@
 #include <stdio.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include "lib/mongo/src/mongo.h"
+// Definitions
+#define TRUE  1
+#define FALSE 0
+#define MONGO_LOG_SERVER_HOST "127.0.0.1"
+#define MONGO_LOG_SERVER_PASS ""
+#define MONGO_LOG_SERVER_PORT 27017
+#define MONGO_LOG_SERVER_USER ""
 /**
  * This method handles all of the contact
  * between the server and the client
@@ -31,11 +40,67 @@ void clientOperations(int iSocketFileDescriptor) {
 		throwError("ERROR:  Unable to write to socket.");
 	}
 }
+void logMessageToDatabase(char *sMessage) {
+	// Declare the MongoDB connection
+	mongo oConnection[1];
+	// Set the connection status
+	iConnectionStatus = mongo_connect(oConnection, MONGO_LOG_SERVER_HOST, MONGO_LOG_SERVER_PORT);
+	// Declare the current time in milliseconds
+	time_t iTimeStamp = (time(NULL) * 1000);
+	// Make sure we have a good status
+	if (iConnectionStatus != MONGO_OK) {
+		// Check for success
+		if (oConnection->err == MONGO_CONN_SUCCESS) {
+			// Declare the BSON object
+			bson oLogData[1];
+			// Initialize the BSON object
+			bson_init(oLogData);
+			// Give the object an ID
+			bson_append_new_oid(oLogData, "iLogMessageId");
+			// Set the message
+			bson_append_string(oLogData, "sMessage", sMessage);
+			// Set the date and time
+			bson_append_int(oLogData, "iTimeStamp", iTimeStamp);
+			// Finalize the BSON object
+			bson_finish(oLogData);
+			// Insert the data
+			mongo_insert(oConnection, "JodenWeb.Logs", oLogData);
+			// Destroy the BSON object
+			bson_destroy(oLogData);
+		} else {
+			// Parse the error
+			switch (oConnection->err) {
+				case MONGO_CONN_BAD_ARG:
+					// Throw a new error
+					throwError("DB-ERROR:  Bad arguments.");
+					// Return
+					return 1;
+				case MONGO_CONN_NO_SOCKET:
+					// Throw a new error
+					throwError("DB-ERROR:  Unable to connect to socket.");
+					// Return
+					return 1;
+				case MONGO_CONN_FAIL:
+					// Throw a new error
+					throwError("DB-ERROR:  Unable to connect.");
+					// Return
+					return 1;
+				case MONGO_CONN_NOT_MASTER:
+					// Throw a new error
+					throwError("DB-ERROR:  Not master server.");
+					// Return
+					return 1;
+			}
+		}
+	}
+	// Desttroy the connection
+	mongo_destroy(oConnection);
+}
 /**
  * This method handles the action of opening, 
  * writing and closing of log files
  **/
-void logMessage(char *sFile, char *sMessage) {
+void logMessageToFile(char *sFile, char *sMessage) {
 	// Declare the file handle
 	FILE *rFileHandle;
 	// Open the file
@@ -103,7 +168,7 @@ int main(int iArgC, char *sArgV[]) {
 	listen(iSocketFileDescriptor, 5);
 	// Set the client length
 	iClientLength            = sizeof(oClientAddress);
-	while (1) {
+	while (TRUE) {
 		// Accept the incoming connection
 		// and setup the new socket
 		iNewSocketFileDescriptor = accept(iSocketFileDescriptor, (struct sockaddr *) &oClientAddress, &iClientLength);
