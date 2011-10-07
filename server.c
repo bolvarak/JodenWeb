@@ -3,17 +3,54 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 /**
- * This is our error handler, it throws
- * errors to the client and terminated JodenWeb
+ * This method handles all of the contact
+ * between the server and the client
  * @return void
 **/
-void throwError(char *sMessage) {
-	// Set the error message
-	perror(sMessage);
-	// Terminate
-	exit(0);
+void clientOperations(int iSocketFileDescriptor) {
+	// Declare the content length
+	int iContentLength;
+	// Declare the buffer
+	char sBuffer[4096];
+	// Reset the buffer
+	bzero(sBuffer, 4096);
+	// Read the socket connection data
+	iContentLength = read(iSocketFileDescriptor, sBuffer, 4095);
+	// Check for data
+	if (iContentLength < 0) {
+		// Throw a new error
+		throwError("ERROR:  Unable to reading from socket.");
+	}
+	// Write to logs
+	logMessage("/Users/tbrown/Documents/Applications/JodenWeb/logs/server.log", &sBuffer);
+	// Write to the socket
+	iContentLength = write(iSocketFileDescriptor, "I got your message", 18);
+	// Check for write success
+	if (iContentLength < 0) {
+		// Throw a new error
+		throwError("ERROR:  Unable to write to socket.");
+	}
 }
-
+/**
+ * This method handles the action of opening, 
+ * writing and closing of log files
+ **/
+void logMessage(char *sFile, char *sMessage) {
+	// Declare the file handle
+	FILE *rFileHandle;
+	// Open the file
+	rFileHandle = fopen(sFile, "a");
+	// Write the data
+	fprintf(rFileHandle, sMessage);
+	// Write a new line
+	fprintf(rFileHandle, "\n");
+	// Close the file
+	fclose(rFileHandle);
+}
+/**
+ * This method is our main constructor
+ * it sets up and closes the connection
+ **/
 int main(int iArgC, char *sArgV[]) {
 	// Declare the socket file descriptor
 	int iSocketFileDescriptor;
@@ -25,6 +62,8 @@ int main(int iArgC, char *sArgV[]) {
 	int iClientLength;
 	// Declare the content length
 	int iContentLength;
+	// Declare the process id
+	int iProcessId;
 	// Declare the buffer size
 	char sBuffer[4096];
 	// Declare the server address
@@ -64,34 +103,46 @@ int main(int iArgC, char *sArgV[]) {
 	listen(iSocketFileDescriptor, 5);
 	// Set the client length
 	iClientLength            = sizeof(oClientAddress);
-	// Accept the incoming connection
-	// and setup the new socket
-	iNewSocketFileDescriptor = accept(iSocketFileDescriptor, (struct sockaddr *) &oClientAddress, &iClientLength);
-	// Check for a connection
-	if (iNewSocketFileDescriptor < 0) {
-		// Throw a new error
-		throwError("ERROR:  Unable to accept incoming connections.");
-	}
-	// Set the new buffer
-	bzero(sBuffer, 4096);
-	// Read the content
-	iContentLength = read(iNewSocketFileDescriptor, sBuffer, 4096);
-	// Make sure we have data
-	if (iContentLength < 0) {
-		// Throw new error
-		throwError("ERROR:  Unable to read connection data.");
-	}
-	// Display the recieved data
-	printf("Here is the message:  %s", sBuffer);
-	// Write to the socket, confirming
-	// that data was recieved
-	iContentLength = write(iNewSocketFileDescriptor, "I got your message", 18);
-	// Make sure the data was
-	// successfully written
-	if (iContentLength < 0) {
-		// Throw a new error
-		throwError("ERROR:  Unable to write connection data.");
+	while (1) {
+		// Accept the incoming connection
+		// and setup the new socket
+		iNewSocketFileDescriptor = accept(iSocketFileDescriptor, (struct sockaddr *) &oClientAddress, &iClientLength);
+		// Check for a connection
+		if (iNewSocketFileDescriptor < 0) {
+			// Throw a new error
+			throwError("ERROR:  Unable to accept incoming connections.");
+		}
+		// Grab a new Process Id
+		iProcessId = fork();
+		// Make sure we have a valid pid
+		if (iProcessId < 0) {
+			// Throw a new error
+			throwError("ERROR:  Unable to fork to the background.");
+		}
+		// Is the service still running
+		if (iProcessId == 0) {
+			// Kill the connection
+			close(iSocketFileDescriptor);
+			// Run the client operations
+			clientOperations(iNewSocketFileDescriptor);
+			// Terminate
+			exit(0);
+		} else {
+			// Do nothing, but close the connection
+			close(iNewSocketFileDescriptor);
+		}
 	}
 	// Return
 	return 0;
+}
+/**
+ * This is our error handler, it throws
+ * errors to the client and terminated JodenWeb
+ * @return void
+**/
+void throwError(char *sMessage) {
+	// Set the error message
+	perror(sMessage);
+	// Terminate
+	exit(0);
 }
