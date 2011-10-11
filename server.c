@@ -1,166 +1,166 @@
 #include <stdio.h>
-#include <time.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-// Definitions
-#define TRUE  1
-#define FALSE 0
-// File Paths
-#define JODEN_LOG_FILE "server.log"
-/**
- * This method handles all of the contact
- * between the server and the client
- * @param int iSocketFileDescriptor
- * @return void
- **/
-void clientOperations(int iSocketFileDescriptor) {
-	// Declare the content length
-	int iContentLength;
-	// Declare the buffer
-	char sBuffer[4096];
-	// Reset the buffer
-	bzero(sBuffer, 4096);
-	// Read the socket connection data
-	iContentLength = read(iSocketFileDescriptor, sBuffer, 4095);
-	// Check for data
-	if (iContentLength < 0) {
-		// Throw a new error
-		throwError("ERROR:  Unable to reading from socket.");
-	}
-	// Write to logs
-	logMessageToFile(JODEN_LOG_FILE, &sBuffer);
-	// Write to the socket
-	iContentLength = write(iSocketFileDescriptor, "Hacker yo gibson!", 17);
-	// Check for write success
-	if (iContentLength < 0) {
-		// Throw a new error
-		throwError("ERROR:  Unable to write to socket.");
-	}
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <sys/wait.h>
+#include <signal.h>
+
+#define FALSE             0
+#define JODEN_BUFFER_SIZE 8192
+#define JODEN_PORT        "1988"
+#define JODEN_QUEUE       25
+#define TRUE              1
+#define UNDEF            -1
+
+void sigChildHandler(int iNumber) {
+	// Kill the child
+	while (waitpid(-1, NULL, WNOHANG) > 0);
 }
-/**
- * This method handles the action of opening, 
- * writing and closing of log files
- * @param char sFile
- * @param char sMessage
- * @return void
- **/
-int logMessageToFile(char *sFile, char *sMessage) {
-	// Declare the file handle
-	FILE *rFileHandle;
-	// Open the file
-	rFileHandle = fopen(sFile, "a");
-	// Write the data
-	fprintf(rFileHandle, sMessage);
-	// Write a new line
-	fprintf(rFileHandle, "\n");
-	// Close the file
-	fclose(rFileHandle);
-    // Return
-    return TRUE;
+
+void *getInternetAddress(struct sockaddr *oSocketAddress) {
+	// Check for IPv4
+	if (oSocketAddress->sa_family == AF_INET) {
+		// Return the IPv4 address
+		return &(((struct sockaddr_in *) oSocketAddress)->sin_addr);
+	}
+	// Return the IPv6 address
+	return &(((struct sockaddr_in6 *) oSocketAddress)->sin6_addr);
 }
-/**
- * This method is our main constructor
- * it sets up and closes the connection
- * @param int iArgC
- * @param char sArgV
- * @return int
- **/
+
 int main(int iArgC, char *sArgV[]) {
-	// Declare the socket file descriptor
-	int iSocketFileDescriptor;
-	// Declare the new socket file descriptor
-	int iNewSocketFileDescriptor;
-	// Declare the port number
-	int iPortNumber;
-	// Declare the client address length
-	int iClientLength;
-	// Declare the content length
-	int iContentLength;
-	// Declare the process id
-	int iProcessId;
-	// Declare the buffer size
-	char sBuffer[4096];
-	// Declare the server address
-	struct sockaddr_in oServerAddress;
-	// Declare the client address
-	struct sockaddr_in oClientAddress;
-	// Make sure we have a port number
-	if (iArgC < 2) {
+	// Declare the server and client socket
+	int iServer, iClient;
+	// Declare address infor containers
+	struct addrinfo oHints, *oServerInfo, *oProtocol;
+	// Declare the client address information container
+	struct sockaddr_storage oClientAddress;
+	// Declare socket internet address size
+	socklen_t iSocketAddressSize;
+	// Declare the signal action
+	struct sigaction oSignalAction;
+	// Declare the buffer
+	char sClientAddress[INET6_ADDRSTRLEN];
+	// Declare a yes operator
+	int iYes = 1;
+	// Declare the error code placeholder
+	int iAddressStatus;
+	// Allocate our memeory
+	memset(&oHints, FALSE, sizeof oHints);
+	// Set our interface type
+	oHints.ai_family   = AF_UNSPEC;
+	// Set our socket type
+	oHints.ai_socktype = SOCK_STREAM;
+	// Set our interface flags
+	oHints.ai_flags    = AI_PASSIVE;
+	// See if we are able to get 
+	// the server address info
+	if ((iAddressStatus = getaddrinfo(NULL, JODEN_PORT, &oHints, &oServerInfo)) != FALSE) {
+		// Throw a new error
+		fprintf(stderr, "ERROR:  Unable to get server address info.  Got code %s.\n", gai_strerror(iAddressStatus));
+		// Nothing more we can do
+		return 1;
+	}
+	// Loop through all of the options and
+	// bind to the first one we can
+	for (oProtocol = oServerInfo; oProtocol != NULL; oProtocol = oProtocol->ai_next) {
+		// Try to create a new socket
+		if ((iServer = socket(oProtocol->ai_family, oProtocol->ai_socktype, oProtocol->ai_protocol)) == UNDEF) {
+			// Show status
+			perror("SERVER:  Socket initialized\n");
+			// Continue processing
+			continue;
+		}
+		// Try to set the socket options
+		if (setsockopt(iServer, SOL_SOCKET, SO_REUSEADDR, &iYes, sizeof(int)) == UNDEF) {
+			// Show status
+			perror("SERVER:  Options set\n");
+			// Continue processing
+			continue;
+		}
+		// Try to bind the socket
+		if (bind(iServer, oProtocol->ai_addr, oProtocol->ai_addrlen) == UNDEF) {
+			// Close the socket
+			close(iServer);
+			// Show status
+			perror("SERVER:  Bound\n");
+			// Continue processing
+			continue;
+		}
+		// End the loop
+		break;
+	}
+	// Check for a valid protocol structure
+	if (oProtocol == NULL) {
 		// Throw an error
-		fprintf(stderr, "ERROR:  No port number provided.");
-		// Terminate
-		exit(0);
+		fprintf(stderr, "ERROR:  Failed to connect.\n");
+		// Nothing more we can do
+		return 2;
 	}
-	// Create the new socket
-	iSocketFileDescriptor = socket(AF_INET, SOCK_STREAM, 0);
-	// Check for successful socket creation
-	if (iSocketFileDescriptor < 0) {
-		// Throw a new error
-		throwError("ERROR:  Unable to open socket.");
+	// Free up address resources
+	freeaddrinfo(oServerInfo);
+	// Try to setup the listener
+	if (listen(iServer, JODEN_QUEUE) == UNDEF) {
+		// Show the status
+		perror("SERVER:  Listening\n");
+		// Everything is done, terminate
+		exit(1);
 	}
-	// Set the server address to zero
-	bzero((char *) &oServerAddress, sizeof(oServerAddress));
-	// Set the port number
-	iPortNumber = atoi(sArgV[1]);
-	// Set the server address interface type
-	oServerAddress.sin_family      = AF_INET;
-	// Set the server address port number
-	oServerAddress.sin_port        = htons(iPortNumber);
-	// Set the IP of the server address
-	oServerAddress.sin_addr.s_addr = INADDR_ANY;
-	// Try to bind to the socket
-	if (bind(iSocketFileDescriptor, (struct sockaddr *) &oServerAddress, sizeof(oServerAddress)) < 0) {
-		// Throw a new error
-		throwError("ERROR:  Unable to bind to address.");
+	// Reap what we have sown
+	oSignalAction.sa_handler = sigChildHandler;
+	// Empty the set
+	sigemptyset(&oSignalAction.sa_mask);
+	// Check for a sigaction
+	if (sigaction(SIGCHLD, &oSignalAction, NULL) == UNDEF) {
+		// Show status
+		perror("SERVER:  Executed SigAction\n");
+		// Nothing more to do
+		exit(1);
 	}
-	// Add a listener
-	listen(iSocketFileDescriptor, 5);
-	// Set the client length
-	iClientLength            = sizeof(oClientAddress);
-	while (TRUE) {
-		// Accept the incoming connection
-		// and setup the new socket
-		iNewSocketFileDescriptor = accept(iSocketFileDescriptor, (struct sockaddr *) &oClientAddress, &iClientLength);
-		// Check for a connection
-		if (iNewSocketFileDescriptor < 0) {
-			// Throw a new error
-			throwError("ERROR:  Unable to accept incoming connections.");
+	// Show server status
+	printf("SERVER:  Awaiting connections\n");
+	// Accept loop
+	while (1) {
+		// Get the client's address size
+		iSocketAddressSize = sizeof oClientAddress;
+		// Create the client socket connection
+		iClient            = accept(iServer, (struct sockaddr *) &oClientAddress, &iSocketAddressSize);
+		// Check for data
+		if (iClient == UNDEF) {
+			// Show status
+			perror("SERVER:  Reading connection\n");
+			// Continue processing
+			continue;
 		}
-		// Grab a new Process Id
-		iProcessId = fork();
-		// Make sure we have a valid pid
-		if (iProcessId < 0) {
-			// Throw a new error
-			throwError("ERROR:  Unable to fork to the background.");
-		}
-		// Is the service still running
-		if (iProcessId == 0) {
-			// Kill the connection
-			close(iSocketFileDescriptor);
-			// Run the client operations
-			clientOperations(iNewSocketFileDescriptor);
-			// Terminate
+		// Grab the client's address
+		inet_ntop(oClientAddress.ss_family, getInternetAddress((struct sockaddr *) &oClientAddress), sClientAddress, sizeof sClientAddress);
+		// Show the status
+		printf("SERVER:  Host %s successfully connected\n", sClientAddress);
+		// Try to fork this process
+		// to the background
+		if (!fork()) {
+			// We are dealing with the child process, 
+			// so we close the listener as it is no
+			// longer needed by this process
+			close(iServer);
+			// Try to send a response
+			if (send(iClient, "Hello World!", 13, FALSE) == UNDEF) {
+				// Show status
+				perror("SERVER:  Sending response\n");
+			}
+			// Close the socket
+			close(iClient);
+			// Nothing more to do
 			exit(0);
-		} else {
-			// Do nothing, but close the connection
-			close(iNewSocketFileDescriptor);
 		}
+		// Close the socket
+		close(iClient);
 	}
-	// Return
+	// We're done
 	return 0;
-}
-/**
- * This is our error handler, it throws
- * errors to the client and terminated JodenWeb
- * @param char sMessage
- * @return void
- **/
-int throwError(char *sMessage) {
-	// Set the error message
-	perror(sMessage);
-	// Terminate
-	exit(0);
-    // Return
-    return TRUE;
 }
